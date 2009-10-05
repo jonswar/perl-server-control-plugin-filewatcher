@@ -1,4 +1,4 @@
-package Server::Control::Plugin::PiedPiper::Watcher;
+package Server::Control::Plugin::FileWatcher::Watcher;
 use strict;
 use warnings;
 use File::Basename;
@@ -50,7 +50,7 @@ sub start {
     );
     Log::Any->set_adapter( 'Dispatch', dispatcher => $log );
 
-    $log->info( sprintf( "piper for %s starting", $self->ctl->description ) );
+    $log->info( sprintf( "watcher for %s starting", $self->ctl->description ) );
     my $is_debug = $self->verbose;
 
     while (1) {
@@ -60,7 +60,7 @@ sub start {
         my $proc = $self->ctl->is_running();
         if ( !$proc || $proc->pid != $ppid ) {
             $log->info(
-                sprintf( "%s no longer running, piper exiting",
+                sprintf( "%s no longer running, watcher exiting",
                     $self->ctl->description )
             );
             exit;
@@ -71,7 +71,7 @@ sub start {
         if ( my @events = $self->notify->new_events() ) {
             $log->debug(
                 sprintf(
-                    "piper received events: %s",
+                    "watcher received events: %s",
                     join( ", ",
                         map { join( ":", $_->path, $_->type ) } @events )
                 )
@@ -79,7 +79,7 @@ sub start {
             my @child_pids = $self->ctl->refork();
             $log->debug(
                 sprintf(
-                    "piper sent TERM to children of pid %d (%s)",
+                    "watcher sent TERM to children of pid %d (%s)",
                     $ppid, join( ", ", @child_pids )
                 )
             ) if $is_debug;

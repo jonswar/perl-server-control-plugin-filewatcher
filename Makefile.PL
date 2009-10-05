@@ -1,8 +1,8 @@
 use inc::Module::Install;
 
-name 'Server-Control-Plugin-PiedPiper';
-abstract 'Refork server on file change';
-all_from 'lib/Server/Control/Plugin/PiedPiper.pm';
+name 'Server-Control-Plugin-FileWatcher';
+abstract 'Take server action on file change';
+all_from 'lib/Server/Control/Plugin/FileWatcher.pm';
 author 'Jonathan Swartz <swartz@pobox.com>';
 
 perl_version '5.006';
