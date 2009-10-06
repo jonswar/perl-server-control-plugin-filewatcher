@@ -18,6 +18,7 @@ coerce $cn_type => from 'HashRef' =>
 has 'watcher_log_file' => ( is => 'ro', lazy_build => 1 );
 has 'watcher_notify'   => ( is => 'ro', isa        => $cn_type, coerce => 1 );
 has 'watcher_pid'      => ( is => 'ro', init_arg   => undef );
+has 'watcher_sleep_interval' => ( is => 'ro', isa => 'Num', default => 2 );
 has 'watcher_verbose' => ( is => 'ro' );
 
 after 'successful_start' => sub {
@@ -29,11 +30,12 @@ after 'successful_start' => sub {
         return;
     }
     my $watcher = Server::Control::Plugin::FileWatcher::Watcher->new(
-        pid_file => $watcher_pid_file,
-        verbose  => $self->watcher_verbose,
-        log_file => $self->watcher_log_file,
-        notify   => $self->watcher_notify,
-        ctl      => $self
+        pid_file       => $watcher_pid_file,
+        verbose        => $self->watcher_verbose,
+        log_file       => $self->watcher_log_file,
+        notify         => $self->watcher_notify,
+        sleep_interval => $self->watcher_sleep_interval,
+        ctl            => $self
     );
     $watcher->start();
     for my $i ( 0 .. 5 ) {
@@ -44,7 +46,8 @@ after 'successful_start' => sub {
         $self->{watcher_pid} = read_file($watcher_pid_file);
     }
     else {
-        die "watcher pid file '$watcher_pid_file' was not created";
+        die
+          "could not start watcher - pid file '$watcher_pid_file' was not created";
     }
 };
 

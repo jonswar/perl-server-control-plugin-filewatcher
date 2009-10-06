@@ -7,14 +7,16 @@ use Guard;
 use Log::Any qw($log);
 use Moose;
 use Proc::Daemon;
+use Time::HiRes qw(usleep);
 
 our $VERSION = '0.01';
 
-has 'ctl'      => ( is => 'ro', required => 1 );
-has 'log_file' => ( is => 'ro', required => 1 );
-has 'notify'   => ( is => 'ro', required => 1 );
-has 'pid_file' => ( is => 'ro', required => 1 );
-has 'verbose'  => ( is => 'ro', required => 1 );
+has 'ctl'            => ( is => 'ro', required => 1 );
+has 'log_file'       => ( is => 'ro', required => 1 );
+has 'notify'         => ( is => 'ro', required => 1 );
+has 'pid_file'       => ( is => 'ro', required => 1 );
+has 'sleep_interval' => ( is => 'ro', required => 1 );
+has 'verbose'        => ( is => 'ro', required => 1 );
 
 __PACKAGE__->meta->make_immutable();
 
@@ -85,7 +87,7 @@ sub start {
             ) if $is_debug;
         }
         else {
-            sleep( $self->notify->sleep_interval() );
+            usleep( $self->sleep_interval() * 1_000_000 );
         }
     }
 }
