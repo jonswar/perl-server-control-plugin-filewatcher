@@ -57,8 +57,9 @@ ok( @pids >= 1, "at least one child pid - " . join(", ", @pids));
 
 write_file( $lib_file, "Bar" );
 
-usleep(500000);  # wait for pids to die
+sleep(2);  # wait for pids to die - should make it a usleep poll loop
 my @pids2 = wait_for_child_pids( $server_pid );
+
 ok( @pids2 >= 1, "at least one child pid after refork - " . join(", ", @pids2));
 my %in_pids = map { ( $_, 1 ) } @pids;
 ok( !(grep { $in_pids{$_} } @pids2), "none of pids2 are in pids" );
