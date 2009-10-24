@@ -10,6 +10,7 @@ perl_version '5.006';
 build_requires 'Test::Class' => 0;
 build_requires 'Test::Most'  => 0;
 
+requires 'Log::Any::Adapter' => 0;
 requires 'Proc::Daemon' => '0.03';
 requires 'Server::Control' => '0.10';
 

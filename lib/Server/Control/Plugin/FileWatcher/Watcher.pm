@@ -38,7 +38,7 @@ sub start {
     write_file( $pid_file, $$ );
     scope_guard { unlink($pid_file) };
 
-    # Send our logs, and any Log::Any logs, to $log_file
+    # Send our logs and Server::Control logs to $log_file
     unlink($log_file);
     my $log = Log::Dispatch->new(
         outputs => [
@@ -50,7 +50,8 @@ sub start {
             ],
         ]
     );
-    Log::Any->set_adapter( 'Dispatch', dispatcher => $log );
+    Log::Any->set_adapter( { category => 'Server::Control' },
+        'Dispatch', dispatcher => $log );
 
     $log->info( sprintf( "watcher for %s starting", $self->ctl->description ) );
     my $is_debug = $self->verbose;
