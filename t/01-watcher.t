@@ -16,7 +16,7 @@ use warnings;
 
 $SIG{CHLD} = 'IGNORE';
 
-plan(tests => 8);
+plan( tests => 8 );
 
 # How to pick this w/o possibly conflicting...
 my $port        = 15432;
@@ -28,7 +28,7 @@ write_file( $lib_file, "Foo" );
 
 my $ctl = Server::Control::NetServer->new_with_traits(
     net_server_class  => 'Net::Server::PreForkSimple',
-    server_root  => $server_root,
+    server_root       => $server_root,
     net_server_params => {
         max_servers => 2,
         port        => $port,
@@ -37,40 +37,42 @@ my $ctl = Server::Control::NetServer->new_with_traits(
         user        => geteuid(),
         group       => getegid()
     },
-    traits  => ['FileWatcher'],
-    watcher_notify => { directories => [$lib_dir], sleep_interval => 1 },
+    traits          => ['FileWatcher'],
+    watcher_notify  => { directories => [$lib_dir], sleep_interval => 1 },
     watcher_verbose => 1,
-#    useful for test debugging
-#    watcher_log_file => './watcher.log',
+
+    #    useful for test debugging
+    #    watcher_log_file => './watcher.log',
 );
 
 my $parent_pid = $$;
 my $stop_guard = guard( sub { cleanup() if $$ == $parent_pid } );
 
 ok( $ctl->start(), 'started' );
-my $server_pid = $ctl->is_running->pid;
-my $watcher_pid  = $ctl->watcher_pid;
-ok(defined($watcher_pid), "watcher started - $watcher_pid");
+my $server_pid  = $ctl->is_running->pid;
+my $watcher_pid = $ctl->watcher_pid;
+ok( defined($watcher_pid), "watcher started - $watcher_pid" );
 
-my @pids = wait_for_child_pids( $server_pid );
-ok( @pids >= 1, "at least one child pid - " . join(", ", @pids));
+my @pids = wait_for_child_pids($server_pid);
+ok( @pids >= 1, "at least one child pid - " . join( ", ", @pids ) );
 
 write_file( $lib_file, "Bar" );
 
-sleep(2);  # wait for pids to die - should make it a usleep poll loop
-my @pids2 = wait_for_child_pids( $server_pid );
+sleep(2);    # wait for pids to die - should make it a usleep poll loop
+my @pids2 = wait_for_child_pids($server_pid);
 
-ok( @pids2 >= 1, "at least one child pid after refork - " . join(", ", @pids2));
+ok( @pids2 >= 1,
+    "at least one child pid after refork - " . join( ", ", @pids2 ) );
 my %in_pids = map { ( $_, 1 ) } @pids;
-ok( !(grep { $in_pids{$_} } @pids2), "none of pids2 are in pids" );
+ok( !( grep { $in_pids{$_} } @pids2 ), "none of pids2 are in pids" );
 
-ok(kill(0, $watcher_pid), "watcher (pid $watcher_pid) still running");
-ok($ctl->stop(), 'stopped');
+ok( kill( 0, $watcher_pid ), "watcher (pid $watcher_pid) still running" );
+ok( $ctl->stop(), 'stopped' );
 for my $count ( 0 .. 50 ) {
-    last if !kill(0, $watcher_pid);
+    last if !kill( 0, $watcher_pid );
     usleep(100000);
 }
-ok(!kill(0, $watcher_pid), "watcher (pid $watcher_pid) stopped");
+ok( !kill( 0, $watcher_pid ), "watcher (pid $watcher_pid) stopped" );
 
 sub wait_for_child_pids {
     my ($pid) = @_;
@@ -86,6 +88,6 @@ sub cleanup {
     if ( $ctl->is_running() ) {
         $ctl->stop();
     }
-    kill(15, $watcher_pid) if $watcher_pid;
+    kill( 15, $watcher_pid ) if $watcher_pid;
     kill_my_children();
 }
