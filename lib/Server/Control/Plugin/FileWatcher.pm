@@ -2,9 +2,9 @@ package Server::Control::Plugin::FileWatcher;
 use File::Basename;
 use File::ChangeNotify;
 use File::Slurp;
+use Log::Any qw($log);
 use Moose::Role;
 use Moose::Util::TypeConstraints;
-use Server::Control::Plugin::FileWatcher::Watcher;
 use Time::HiRes qw(usleep);
 use strict;
 use warnings;
@@ -15,49 +15,59 @@ my $cn_type = subtype as class_type('File::ChangeNotify::Watcher');
 coerce $cn_type => from 'HashRef' =>
   via { File::ChangeNotify->instantiate_watcher( %{$_} ) };
 
-has 'watcher_log_file' => ( is => 'ro', lazy_build => 1 );
-has 'watcher_notify'   => ( is => 'ro', isa        => $cn_type, coerce => 1 );
-has 'watcher_pid'      => ( is => 'ro', init_arg   => undef );
+my $default_trigger_method = sub { $_[0]->restart };
+has 'watcher_notify' => ( is => 'ro', isa => $cn_type, coerce => 1 );
 has 'watcher_sleep_interval' => ( is => 'ro', isa => 'Num', default => 2 );
-has 'watcher_verbose' => ( is => 'ro' );
+has 'watcher_trigger_method' =>
+  ( is => 'ro', isa => 'Str|Code', default => 'restart' );
 
 after 'successful_start' => sub {
-    my $self             = shift;
-    my $watcher_pid_file = dirname( $self->pid_file ) . "/watcher.pid.$$";
-    if ( -f $watcher_pid_file ) {
-        warn
-          "watcher pid file '$watcher_pid_file' already exists - not creating another one";
-        return;
-    }
-    my $watcher = Server::Control::Plugin::FileWatcher::Watcher->new(
-        pid_file       => $watcher_pid_file,
-        verbose        => $self->watcher_verbose,
-        log_file       => $self->watcher_log_file,
-        notify         => $self->watcher_notify,
-        sleep_interval => $self->watcher_sleep_interval,
-        ctl            => $self
-    );
-    $watcher->start();
-    for my $i ( 0 .. 5 ) {
-        last if -f $watcher_pid_file;
-        usleep(250000);
-    }
-    if ( -f $watcher_pid_file ) {
-        $self->{watcher_pid} = read_file($watcher_pid_file);
-    }
-    else {
-        die
-          "could not start watcher - pid file '$watcher_pid_file' was not created";
-    }
+    my $self = shift;
+    $self->run_watcher();
 };
 
-sub _build_watcher_log_file {
-    my ($self) = @_;
+sub watcher_run {
+    my $self = shift;
+    $log->info( "watching directories: "
+          . join( ", ", map { "'$_'" } @{ $self->watcher_notify->directories } )
+    );
 
-    return
-      defined( $self->error_log )
-      ? dirname( $self->error_log ) . "/watcher.log"
-      : die "no log file and could not determine from error log";
+    while (1) {
+
+        # Check if server is still running; if not, exit.
+        #
+        my $proc = $self->is_running();
+        if ( !$proc ) {
+            $log->info(
+                sprintf( "%s no longer running, watcher exiting",
+                    $self->description )
+            );
+            last;
+        }
+
+        # Check if any files changed. If so, run trigger; otherwise, sleep and try again.
+        #
+        if ( my @events = $self->notify->new_events() ) {
+            $log->debug(
+                sprintf(
+                    "watcher received events: %s",
+                    join( ", ",
+                        map { join( ":", $_->path, $_->type ) } @events )
+                )
+            ) if $is_debug;
+            $self->watcher_trigger();
+            $self->$method();
+        }
+        else {
+            usleep( $self->sleep_interval() * 1_000_000 );
+        }
+    }
+}
+
+sub watcher_trigger {
+    my $self   = shift;
+    my $method = $self->watcher_trigger_method;
+    $self->$method();
 }
 
 1;
@@ -77,9 +87,9 @@ change
 
 =head1 DESCRIPTION
 
-Server::Control::Plugin::FileWatcher launches a daemon to watch for particular
-files/directories to change, and performs a server action (e.g. restart,
-refork) when they do change.
+Server::Control::Plugin::FileWatcher takes control after a successful server
+start, and watches particular files/directories. When they change, it performs
+a server action (e.g. restart, refork).
 
 =head1 AUTHOR
 
