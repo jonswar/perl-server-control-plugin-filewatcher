@@ -2,6 +2,7 @@ package Server::Control::Plugin::FileWatcher;
 use File::Basename;
 use File::ChangeNotify;
 use File::Slurp;
+use List::MoreUtils qw(uniq);
 use Log::Any qw($log);
 use Moose::Role;
 use Moose::Util::TypeConstraints;
@@ -11,57 +12,68 @@ use warnings;
 
 our $VERSION = '0.01';
 
-my $cn_type = subtype as class_type('File::ChangeNotify::Watcher');
-coerce $cn_type => from 'HashRef' =>
-  via { File::ChangeNotify->instantiate_watcher( %{$_} ) };
-
-my $default_trigger_method = sub { $_[0]->restart };
-has 'watcher_notify' => ( is => 'ro', isa => $cn_type, coerce => 1 );
+has 'watcher_notify' =>
+  ( is => 'bare', required => 1, isa => 'Object|HashRef' );
 has 'watcher_sleep_interval' => ( is => 'ro', isa => 'Num', default => 2 );
 has 'watcher_trigger_method' =>
-  ( is => 'ro', isa => 'Str|Code', default => 'restart' );
+  ( is => 'ro', isa => 'Str|CodeRef', default => 'restart' );
 
 after 'successful_start' => sub {
     my $self = shift;
-    $self->run_watcher();
+
+    $self->watch();
 };
 
-sub watcher_run {
+override 'valid_cli_actions' => sub {
+    return ( super(), qw(watch) );
+};
+
+# Lazily convert watcher_notify params hash into object
+#
+sub watcher_notify {
     my $self = shift;
+    if ( ref( $self->{watcher_notify} ) eq 'HASH' ) {
+        $self->{watcher_notify} = File::ChangeNotify->instantiate_watcher(
+            %{ $self->{watcher_notify} } );
+    }
+    return $self->{watcher_notify};
+}
+
+sub watch {
+    my $self = shift;
+
+    # Avoid entering more than once
+    #
+    return if $self->{watcher_in_watch};
+    local $self->{watcher_in_watch} = 1;
+
     $log->info( "watching directories: "
           . join( ", ", map { "'$_'" } @{ $self->watcher_notify->directories } )
     );
 
     while (1) {
 
-        # Check if server is still running; if not, exit.
-        #
-        my $proc = $self->is_running();
-        if ( !$proc ) {
-            $log->info(
-                sprintf( "%s no longer running, watcher exiting",
-                    $self->description )
-            );
-            last;
-        }
-
         # Check if any files changed. If so, run trigger; otherwise, sleep and try again.
         #
-        if ( my @events = $self->notify->new_events() ) {
-            $log->debug(
-                sprintf(
-                    "watcher received events: %s",
-                    join( ", ",
-                        map { join( ":", $_->path, $_->type ) } @events )
-                )
-            ) if $is_debug;
-            $self->watcher_trigger();
-            $self->$method();
+        if ( my @events = $self->watcher_notify->new_events() ) {
+            my @paths =
+              sort( grep { $self->is_valid_file($_) } uniq( map { $_->path } @events ) );
+            if (@paths) {
+                $log->info( sprintf( "changes: %s", join( ", ", @paths ) ) );
+                $self->watcher_trigger();
+                $log->info("ready");
+            }
         }
         else {
-            usleep( $self->sleep_interval() * 1_000_000 );
+            usleep( $self->watcher_sleep_interval() * 1_000_000 );
         }
     }
+}
+
+# Borrowed from Plack::Loader::Restarter
+sub is_valid_file {
+    my ($file) = @_;
+    $file !~ m![/\\][\._]|\.bak$|~$!;
 }
 
 sub watcher_trigger {
