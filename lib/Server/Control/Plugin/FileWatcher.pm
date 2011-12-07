@@ -12,6 +12,7 @@ use warnings;
 
 our $VERSION = '0.01';
 
+has 'watcher_auto_watch' => ( is => 'ro', isa => 'Bool', default => 1 );
 has 'watcher_notify' =>
   ( is => 'bare', required => 1, isa => 'Object|HashRef' );
 has 'watcher_sleep_interval' => ( is => 'ro', isa => 'Num', default => 2 );
@@ -21,7 +22,9 @@ has 'watcher_trigger_method' =>
 after 'successful_start' => sub {
     my $self = shift;
 
-    $self->watch();
+    if ( $self->watcher_auto_watch ) {
+        $self->watch();
+    }
 };
 
 override 'valid_cli_actions' => sub {
@@ -57,7 +60,8 @@ sub watch {
         #
         if ( my @events = $self->watcher_notify->new_events() ) {
             my @paths =
-              sort( grep { $self->is_valid_file($_) } uniq( map { $_->path } @events ) );
+              sort( grep { $self->is_valid_file($_) }
+                  uniq( map { $_->path } @events ) );
             if (@paths) {
                 $log->info( sprintf( "changes: %s", join( ", ", @paths ) ) );
                 $self->watcher_trigger();
@@ -71,6 +75,7 @@ sub watch {
 }
 
 # Borrowed from Plack::Loader::Restarter
+#
 sub is_valid_file {
     my ($file) = @_;
     $file !~ m![/\\][\._]|\.bak$|~$!;
@@ -97,11 +102,55 @@ change
 
     use Server::Control::Plugin::FileWatcher;
 
+    # Auto-watch after successful start
+    #
+    % apachectlp -k start
+    waiting for server start
+    watching directories: lib
+    ...
+    changes: lib/Foo.pm
+    sent HUP to process 28575
+    waiting for server restart
+    server 'hm' is running (pid 28575) and listening to port 3220
+    ready
+
+    # Manual watch
+    #
+    % apachectlp -k watch
+    watching directories: lib
+    ...
+
 =head1 DESCRIPTION
 
-Server::Control::Plugin::FileWatcher takes control after a successful server
-start, and watches particular files/directories. When they change, it performs
-a server action (e.g. restart, refork).
+Server::Control::Plugin::FileWatcher creates a new action, 'watch', that
+perpetually watches particular files/directories for changes and perform a
+server action (e.g. restart) on each change.
+
+By default 'watch' is automatically called after a successful server start.
+
+=head1 PARAMETERS
+
+=over
+
+=item watcher_notify
+
+A File::ChangeNotify object, or a hashref of File::ChangeNotify constructor
+parameters, indicating which files/directories to watch. Required.
+
+=item watcher_auto_watch
+
+Indicates whether 'watch' should be automatically called after a successful
+server start. Defaults to true.
+
+=item watcher_sleep_interval
+
+Number of seconds (floating point) to sleep between checks. Defaults to 0.5.
+
+=item watcher_trigger_method
+
+A method name or a code ref to call when files/directories change. Defaults to 'restart'.
+
+=back
 
 =head1 AUTHOR
 
@@ -109,7 +158,7 @@ Jonathan Swartz
 
 =head1 SEE ALSO
 
-L<Server::Control>
+L<Server::Control|Server::Control>, L<File::ChangeNotify|File::ChangeNotify>
 
 =head1 COPYRIGHT & LICENSE
 
